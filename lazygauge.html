@@ -1,0 +1,690 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Knitting Gauge Predictor & Swatch Library</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+    input[type="number"]::-webkit-inner-spin-button,
+    input[type="number"]::-webkit-outer-spin-button {
+      opacity: 1;
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen selection:bg-indigo-500 selection:text-white">
+  <div class="max-w-6xl mx-auto px-4 py-8 sm:px-6 lg:px-8">
+    <!-- Header -->
+    <header class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-6 border-b border-slate-800">
+      <div>
+        <h1 class="text-2xl sm:text-3xl font-bold tracking-tight text-white">Knitting Gauge Predictor</h1>
+        <p class="text-sm text-slate-400 mt-1">Grist-based proportional gauge modeling &amp; needle solver</p>
+      </div>
+      <div class="flex items-center gap-2 bg-slate-900 p-1 rounded-lg border border-slate-800 self-start">
+        <button id="unit-metric" onclick="setUnits('metric')" class="px-3 py-1.5 text-xs font-semibold rounded-md transition bg-indigo-600 text-white">Metric (m / g / 10cm)</button>
+        <button id="unit-imperial" onclick="setUnits('imperial')" class="px-3 py-1.5 text-xs font-semibold rounded-md transition text-slate-400 hover:text-white">Imperial (yd / oz / 4")</button>
+      </div>
+    </header>
+
+    <!-- Navigation Tabs -->
+    <nav class="flex flex-wrap gap-2 mt-6 border-b border-slate-800 pb-4">
+      <button onclick="switchTab('find-needle')" id="tab-find-needle" class="tab-btn px-4 py-2 rounded-lg text-sm font-medium bg-indigo-600 text-white transition">
+        Find Target Needle Size
+      </button>
+      <button onclick="switchTab('predict-gauge')" id="tab-predict-gauge" class="tab-btn px-4 py-2 rounded-lg text-sm font-medium bg-slate-900 text-slate-300 hover:bg-slate-800 transition">
+        Predict Gauge
+      </button>
+      <button onclick="switchTab('library')" id="tab-library" class="tab-btn px-4 py-2 rounded-lg text-sm font-medium bg-slate-900 text-slate-300 hover:bg-slate-800 transition">
+        Swatch Library (<span id="swatch-count">0</span>)
+      </button>
+    </nav>
+
+    <!-- TAB 1: FIND TARGET NEEDLE SIZE -->
+    <section id="panel-find-needle" class="tab-panel mt-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
+      <div class="lg:col-span-7 space-y-6">
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-6 space-y-5">
+          <div>
+            <h2 class="text-lg font-semibold text-white">1. Reference Swatch</h2>
+            <p class="text-xs text-slate-400 mt-0.5">Select a known swatch from your library to anchor your personal tension.</p>
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-400 mb-1.5">Known Swatch</label>
+            <select id="fn-ref-swatch" onchange="calculateTargetNeedle()" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500"></select>
+          </div>
+          <div id="fn-ref-summary" class="grid grid-cols-3 gap-3 bg-slate-950/70 border border-slate-800/80 rounded-lg p-3.5 text-xs"></div>
+        </div>
+
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-6 space-y-5">
+          <div>
+            <h2 class="text-lg font-semibold text-white">2. Project Yarn &amp; Pattern Target</h2>
+            <p class="text-xs text-slate-400 mt-0.5">Enter your new yarn's put-up and the gauge required by your pattern.</p>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-xs font-medium text-slate-400 mb-1.5">Target Yarn Length (<span class="unit-len">m</span>)</label>
+              <input type="number" id="fn-target-length" value="200" min="1" step="any" oninput="calculateTargetNeedle()" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3.5 py-2 text-sm text-white focus:outline-none focus:border-indigo-500" />
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-slate-400 mb-1.5">Target Yarn Weight (<span class="unit-wt">g</span>)</label>
+              <input type="number" id="fn-target-weight" value="50" min="1" step="any" oninput="calculateTargetNeedle()" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3.5 py-2 text-sm text-white focus:outline-none focus:border-indigo-500" />
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-xs font-medium text-slate-400 mb-1.5">Desired Stitch Gauge (sts / <span class="unit-dim">10cm</span>)</label>
+              <input type="number" id="fn-target-sts" value="22" min="1" step="0.5" oninput="calculateTargetNeedle()" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3.5 py-2 text-sm text-white focus:outline-none focus:border-indigo-500" />
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-slate-400 mb-1.5">Desired Row Gauge (rows / <span class="unit-dim">10cm</span>) <span class="text-slate-500">(optional)</span></label>
+              <input type="number" id="fn-target-rows" value="30" min="1" step="0.5" oninput="calculateTargetNeedle()" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3.5 py-2 text-sm text-white focus:outline-none focus:border-indigo-500" />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Result Card -->
+      <div class="lg:col-span-5">
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-6 sticky top-6 space-y-6">
+          <div>
+            <span class="text-xs font-semibold uppercase tracking-wider text-indigo-400">Recommended Starting Needle</span>
+            <div class="mt-3 flex items-baseline gap-3">
+              <span id="fn-result-mm" class="text-4xl font-bold text-white">-- mm</span>
+              <span id="fn-result-us" class="text-sm font-medium text-slate-400 bg-slate-800 px-2.5 py-1 rounded-md">US --</span>
+            </div>
+            <p id="fn-result-nearest" class="text-xs text-slate-400 mt-2">Nearest standard needle: --</p>
+          </div>
+
+          <div class="border-t border-slate-800 pt-4 space-y-3 text-sm">
+            <div class="flex justify-between">
+              <span class="text-slate-400">Target Yarn Category</span>
+              <span id="fn-result-category" class="font-medium text-white">--</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-slate-400">Target Grist</span>
+              <span id="fn-result-grist" class="font-medium text-slate-200">--</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-slate-400">Projected Row Gauge</span>
+              <span id="fn-result-proj-rows" class="font-medium text-slate-200">--</span>
+            </div>
+          </div>
+
+          <div class="bg-slate-950 border border-slate-800 rounded-lg p-4">
+            <canvas id="fn-canvas" width="320" height="150" class="w-full h-36 rounded"></canvas>
+            <p class="text-[11px] text-slate-500 text-center mt-2">Visual fabric density comparison (Reference vs. Target)</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 2: PREDICT GAUGE -->
+    <section id="panel-predict-gauge" class="tab-panel hidden mt-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
+      <div class="lg:col-span-7 space-y-6">
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-6 space-y-5">
+          <div>
+            <h2 class="text-lg font-semibold text-white">1. Baseline Swatch</h2>
+            <p class="text-xs text-slate-400 mt-0.5">Choose the swatch whose tension behavior matches your knitting style.</p>
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-400 mb-1.5">Known Swatch</label>
+            <select id="pg-ref-swatch" onchange="calculatePredictedGauge()" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500"></select>
+          </div>
+        </div>
+
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-6 space-y-5">
+          <div>
+            <h2 class="text-lg font-semibold text-white">2. New Yarn &amp; Needle Combination</h2>
+            <p class="text-xs text-slate-400 mt-0.5">Input your yarn specifications and target needle diameter (1.5mm – 15mm).</p>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-xs font-medium text-slate-400 mb-1.5">New Yarn Length (<span class="unit-len">m</span>)</label>
+              <input type="number" id="pg-target-length" value="210" min="1" step="any" oninput="calculatePredictedGauge()" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3.5 py-2 text-sm text-white focus:outline-none focus:border-indigo-500" />
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-slate-400 mb-1.5">New Yarn Weight (<span class="unit-wt">g</span>)</label>
+              <input type="number" id="pg-target-weight" value="50" min="1" step="any" oninput="calculatePredictedGauge()" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3.5 py-2 text-sm text-white focus:outline-none focus:border-indigo-500" />
+            </div>
+          </div>
+
+          <div>
+            <div class="flex items-center justify-between mb-1.5">
+              <label class="text-xs font-medium text-slate-400">Target Needle Size (1.5mm – 15mm)</label>
+              <span id="pg-needle-us-label" class="text-xs text-indigo-400 font-medium">US 6</span>
+            </div>
+            <input type="number" id="pg-target-needle" value="4.0" min="1.5" max="15" step="0.25" oninput="calculatePredictedGauge()" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3.5 py-2 text-sm text-white focus:outline-none focus:border-indigo-500" />
+            
+            <!-- Quick Needle Shortcuts: 3.5mm to 5.5mm in 0.5mm increments -->
+            <div class="flex flex-wrap items-center gap-2 mt-3">
+              <span class="text-xs text-slate-500">Quick select:</span>
+              <button type="button" onclick="setNeedleInput('pg-target-needle', 3.5)" class="px-2.5 py-1 text-xs rounded-md bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition">3.5mm (US 4)</button>
+              <button type="button" onclick="setNeedleInput('pg-target-needle', 4.0)" class="px-2.5 py-1 text-xs rounded-md bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition">4.0mm (US 6)</button>
+              <button type="button" onclick="setNeedleInput('pg-target-needle', 4.5)" class="px-2.5 py-1 text-xs rounded-md bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition">4.5mm (US 7)</button>
+              <button type="button" onclick="setNeedleInput('pg-target-needle', 5.0)" class="px-2.5 py-1 text-xs rounded-md bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition">5.0mm (US 8)</button>
+              <button type="button" onclick="setNeedleInput('pg-target-needle', 5.5)" class="px-2.5 py-1 text-xs rounded-md bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition">5.5mm (US 9)</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Predicted Gauge Output -->
+      <div class="lg:col-span-5">
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-6 sticky top-6 space-y-6">
+          <div>
+            <span class="text-xs font-semibold uppercase tracking-wider text-emerald-400">Predicted Gauge</span>
+            <div class="mt-3 grid grid-cols-2 gap-4">
+              <div class="bg-slate-950 border border-slate-800 rounded-lg p-3.5">
+                <div class="text-xs text-slate-400">Stitches / <span class="unit-dim">10cm</span></div>
+                <div id="pg-result-sts" class="text-3xl font-bold text-white mt-1">--</div>
+              </div>
+              <div class="bg-slate-950 border border-slate-800 rounded-lg p-3.5">
+                <div class="text-xs text-slate-400">Rows / <span class="unit-dim">10cm</span></div>
+                <div id="pg-result-rows" class="text-3xl font-bold text-white mt-1">--</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="border-t border-slate-800 pt-4 space-y-3 text-sm">
+            <div class="flex justify-between">
+              <span class="text-slate-400">New Yarn Weight Class</span>
+              <span id="pg-result-category" class="font-medium text-white">--</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-slate-400">Stitch Density Shift</span>
+              <span id="pg-result-shift" class="font-medium text-slate-200">--</span>
+            </div>
+          </div>
+
+          <div class="bg-slate-950 border border-slate-800 rounded-lg p-4">
+            <canvas id="pg-canvas" width="320" height="150" class="w-full h-36 rounded"></canvas>
+            <p class="text-[11px] text-slate-500 text-center mt-2">Simulated stitch grid at <span class="unit-dim">10cm</span> × <span class="unit-dim">10cm</span></p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 3: SWATCH LIBRARY -->
+    <section id="panel-library" class="tab-panel hidden mt-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
+      <!-- Add Swatch Form -->
+      <div class="lg:col-span-5">
+        <form onsubmit="addSwatch(event)" class="bg-slate-900 border border-slate-800 rounded-xl p-6 space-y-4">
+          <h2 class="text-lg font-semibold text-white">Add Known Swatch</h2>
+          <p class="text-xs text-slate-400">Record a washed &amp; blocked swatch to use as a calibration baseline.</p>
+
+          <div>
+            <label class="block text-xs font-medium text-slate-400 mb-1">Yarn / Project Label</label>
+            <input type="text" id="sw-name" required placeholder="e.g., Merino DK Stockinette" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3.5 py-2 text-sm text-white focus:outline-none focus:border-indigo-500" />
+          </div>
+
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs font-medium text-slate-400 mb-1">Skein Length (<span class="unit-len">m</span>)</label>
+              <input type="number" id="sw-length" required min="1" step="any" placeholder="200" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3.5 py-2 text-sm text-white focus:outline-none focus:border-indigo-500" />
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-slate-400 mb-1">Skein Weight (<span class="unit-wt">g</span>)</label>
+              <input type="number" id="sw-weight" required min="1" step="any" placeholder="100" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3.5 py-2 text-sm text-white focus:outline-none focus:border-indigo-500" />
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-xs font-medium text-slate-400 mb-1">Needle Size Used (1.5mm – 15mm)</label>
+            <input type="number" id="sw-needle" required min="1.5" max="15" step="0.25" value="4.0" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3.5 py-2 text-sm text-white focus:outline-none focus:border-indigo-500" />
+            <div class="flex flex-wrap items-center gap-1.5 mt-2">
+              <button type="button" onclick="setNeedleInput('sw-needle', 3.5)" class="px-2 py-0.5 text-[11px] rounded bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700">3.5mm</button>
+              <button type="button" onclick="setNeedleInput('sw-needle', 4.0)" class="px-2 py-0.5 text-[11px] rounded bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700">4.0mm</button>
+              <button type="button" onclick="setNeedleInput('sw-needle', 4.5)" class="px-2 py-0.5 text-[11px] rounded bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700">4.5mm</button>
+              <button type="button" onclick="setNeedleInput('sw-needle', 5.0)" class="px-2 py-0.5 text-[11px] rounded bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700">5.0mm</button>
+              <button type="button" onclick="setNeedleInput('sw-needle', 5.5)" class="px-2 py-0.5 text-[11px] rounded bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700">5.5mm</button>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs font-medium text-slate-400 mb-1">Measured Stitches / <span class="unit-dim">10cm</span></label>
+              <input type="number" id="sw-sts" required min="1" step="0.5" placeholder="22" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3.5 py-2 text-sm text-white focus:outline-none focus:border-indigo-500" />
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-slate-400 mb-1">Measured Rows / <span class="unit-dim">10cm</span></label>
+              <input type="number" id="sw-rows" required min="1" step="0.5" placeholder="30" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3.5 py-2 text-sm text-white focus:outline-none focus:border-indigo-500" />
+            </div>
+          </div>
+
+          <button type="submit" class="w-full py-2.5 px-4 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold rounded-lg transition">
+            Save Swatch to Library
+          </button>
+        </form>
+      </div>
+
+      <!-- Saved Swatches List -->
+      <div class="lg:col-span-7 space-y-4">
+        <div class="flex items-center justify-between">
+          <h2 class="text-lg font-semibold text-white">Your Saved Swatches</h2>
+          <button onclick="resetDefaultSwatches()" class="text-xs text-slate-400 hover:text-slate-200 underline">Restore Sample Swatches</button>
+        </div>
+        <div id="swatch-list" class="grid grid-cols-1 sm:grid-cols-2 gap-4"></div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    const STORAGE_KEY = 'knitting_gauge_swatches_v2';
+    let currentUnit = 'metric'; // 'metric' (m/g/10cm) or 'imperial' (yd/oz/4in)
+
+    // Weight factor balancing rigid needle diameter vs yarn cross-sectional diameter
+    const YARN_WEIGHT_FACTOR = 3.2;
+
+    const US_NEEDLE_MAP = [
+      { mm: 1.5, us: 'US 000' },
+      { mm: 1.75, us: 'US 00' },
+      { mm: 2.0, us: 'US 0' },
+      { mm: 2.25, us: 'US 1' },
+      { mm: 2.5, us: 'US 1.5' },
+      { mm: 2.75, us: 'US 2' },
+      { mm: 3.0, us: 'US 2.5' },
+      { mm: 3.25, us: 'US 3' },
+      { mm: 3.5, us: 'US 4' },
+      { mm: 3.75, us: 'US 5' },
+      { mm: 4.0, us: 'US 6' },
+      { mm: 4.5, us: 'US 7' },
+      { mm: 5.0, us: 'US 8' },
+      { mm: 5.5, us: 'US 9' },
+      { mm: 6.0, us: 'US 10' },
+      { mm: 6.5, us: 'US 10.5' },
+      { mm: 7.0, us: 'US 10.75' },
+      { mm: 8.0, us: 'US 11' },
+      { mm: 9.0, us: 'US 13' },
+      { mm: 10.0, us: 'US 15' },
+      { mm: 12.0, us: 'US 17' },
+      { mm: 15.0, us: 'US 19' }
+    ];
+
+    const DEFAULT_SWATCHES = [
+      {
+        id: 'sw-1',
+        name: 'Sock / Fingering Merino',
+        metersPerGram: 4.0, // 400m / 100g
+        needleMm: 2.5,
+        stsPer10cm: 30,
+        rowsPer10cm: 42
+      },
+      {
+        id: 'sw-2',
+        name: 'Classic DK Wool',
+        metersPerGram: 2.2, // 220m / 100g
+        needleMm: 4.0,
+        stsPer10cm: 22,
+        rowsPer10cm: 30
+      },
+      {
+        id: 'sw-3',
+        name: 'Worsted Highland Wool',
+        metersPerGram: 1.8, // 180m / 100g
+        needleMm: 4.5,
+        stsPer10cm: 19,
+        rowsPer10cm: 26
+      },
+      {
+        id: 'sw-4',
+        name: 'Chunky / Bulky Merino',
+        metersPerGram: 1.0, // 100m / 100g
+        needleMm: 6.5,
+        stsPer10cm: 14,
+        rowsPer10cm: 19
+      }
+    ];
+
+    let swatches = [];
+
+    function loadSwatches() {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        try {
+          swatches = JSON.parse(raw);
+        } catch (e) {
+          swatches = [...DEFAULT_SWATCHES];
+        }
+      } else {
+        swatches = [...DEFAULT_SWATCHES];
+        saveSwatches();
+      }
+    }
+
+    function saveSwatches() {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(swatches));
+      document.getElementById('swatch-count').textContent = swatches.length;
+    }
+
+    function resetDefaultSwatches() {
+      swatches = [...DEFAULT_SWATCHES];
+      saveSwatches();
+      renderAll();
+    }
+
+    // Standard yarn weight classification based on meters per gram (m/g)
+    function classifyYarnWeight(metersPerGram) {
+      if (metersPerGram >= 6.0) return 'Lace';
+      if (metersPerGram >= 3.5) return 'Fingering';
+      if (metersPerGram >= 2.7) return 'Sport';
+      if (metersPerGram >= 2.0) return 'DK';
+      if (metersPerGram >= 1.4) return 'Worsted';
+      if (metersPerGram >= 0.8) return 'Bulky';
+      return 'Super Bulky';
+    }
+
+    function getNearestUsNeedle(mm) {
+      let closest = US_NEEDLE_MAP[0];
+      let minDiff = Math.abs(mm - closest.mm);
+      for (const item of US_NEEDLE_MAP) {
+        const diff = Math.abs(mm - item.mm);
+        if (diff < minDiff) {
+          minDiff = diff;
+          closest = item;
+        }
+      }
+      return closest;
+    }
+
+    // Convert user input length & weight into canonical meters per gram
+    function toMetersPerGram(length, weight) {
+      if (!length || !weight || weight <= 0) return 2.0;
+      if (currentUnit === 'metric') {
+        return length / weight; // m / g
+      } else {
+        // 1 yard = 0.9144 meters; 1 oz = 28.3495 grams
+        const meters = length * 0.9144;
+        const grams = weight * 28.3495;
+        return meters / grams;
+      }
+    }
+
+    function formatGrist(metersPerGram) {
+      if (currentUnit === 'metric') {
+        return `${metersPerGram.toFixed(2)} m/g (${Math.round(metersPerGram * 100)}m / 100g)`;
+      } else {
+        const ydPerOz = metersPerGram * (28.3495 / 0.9144);
+        return `${ydPerOz.toFixed(1)} yd/oz (${Math.round(ydPerOz * 3.5)}yd / 100g)`;
+      }
+    }
+
+    // Effective loop scale factor: E = N + w * (1 / sqrt(R))
+    function getEffectiveDimension(needleMm, metersPerGram) {
+      const relativeDiameter = 1 / Math.sqrt(metersPerGram);
+      return needleMm + YARN_WEIGHT_FACTOR * relativeDiameter;
+    }
+
+    function setUnits(unit) {
+      currentUnit = unit;
+      document.getElementById('unit-metric').className = unit === 'metric'
+        ? 'px-3 py-1.5 text-xs font-semibold rounded-md transition bg-indigo-600 text-white'
+        : 'px-3 py-1.5 text-xs font-semibold rounded-md transition text-slate-400 hover:text-white';
+      document.getElementById('unit-imperial').className = unit === 'imperial'
+        ? 'px-3 py-1.5 text-xs font-semibold rounded-md transition bg-indigo-600 text-white'
+        : 'px-3 py-1.5 text-xs font-semibold rounded-md transition text-slate-400 hover:text-white';
+
+      document.querySelectorAll('.unit-len').forEach(el => el.textContent = unit === 'metric' ? 'm' : 'yd');
+      document.querySelectorAll('.unit-wt').forEach(el => el.textContent = unit === 'metric' ? 'g' : 'oz');
+      document.querySelectorAll('.unit-dim').forEach(el => el.textContent = unit === 'metric' ? '10cm' : '4"');
+
+      renderAll();
+    }
+
+    function switchTab(tabName) {
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('hidden'));
+      document.getElementById(`panel-${tabName}`).classList.remove('hidden');
+
+      document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.className = 'tab-btn px-4 py-2 rounded-lg text-sm font-medium bg-slate-900 text-slate-300 hover:bg-slate-800 transition';
+      });
+      document.getElementById(`tab-${tabName}`).className = 'tab-btn px-4 py-2 rounded-lg text-sm font-medium bg-indigo-600 text-white transition';
+
+      if (tabName === 'find-needle') calculateTargetNeedle();
+      if (tabName === 'predict-gauge') calculatePredictedGauge();
+    }
+
+    function setNeedleInput(inputId, val) {
+      const el = document.getElementById(inputId);
+      el.value = val.toFixed(1);
+      if (inputId === 'pg-target-needle') {
+        calculatePredictedGauge();
+      }
+    }
+
+    function populateSwatchSelects() {
+      const fnSelect = document.getElementById('fn-ref-swatch');
+      const pgSelect = document.getElementById('pg-ref-swatch');
+      const prevFn = fnSelect.value;
+      const prevPg = pgSelect.value;
+
+      const optionsHtml = swatches.map(s => {
+        const weightTag = classifyYarnWeight(s.metersPerGram);
+        return `<option value="${s.id}">${s.name} (${weightTag} • ${s.needleMm}mm • ${s.stsPer10cm} sts)</option>`;
+      }).join('');
+
+      fnSelect.innerHTML = optionsHtml;
+      pgSelect.innerHTML = optionsHtml;
+
+      if (swatches.some(s => s.id === prevFn)) fnSelect.value = prevFn;
+      if (swatches.some(s => s.id === prevPg)) pgSelect.value = prevPg;
+    }
+
+    function renderSwatchLibrary() {
+      const container = document.getElementById('swatch-list');
+      if (swatches.length === 0) {
+        container.innerHTML = `<div class="col-span-2 text-sm text-slate-400 bg-slate-900 border border-slate-800 rounded-xl p-6 text-center">No swatches saved yet. Add one on the left!</div>`;
+        return;
+      }
+
+      container.innerHTML = swatches.map(s => {
+        const weightCategory = classifyYarnWeight(s.metersPerGram);
+        const usInfo = getNearestUsNeedle(s.needleMm);
+        const dimLabel = currentUnit === 'metric' ? '10cm' : '4"';
+
+        return `
+          <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col justify-between gap-3 hover:border-slate-700 transition">
+            <div>
+              <div class="flex items-start justify-between gap-2">
+                <h3 class="font-semibold text-white text-sm leading-snug">${s.name}</h3>
+                <span class="shrink-0 px-2.5 py-0.5 text-xs font-medium rounded-full bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">
+                  ${weightCategory}
+                </span>
+              </div>
+              <div class="mt-3 grid grid-cols-2 gap-2 text-xs">
+                <div class="bg-slate-950 rounded-lg p-2 border border-slate-800/80">
+                  <span class="text-slate-500 block">Needle</span>
+                  <span class="text-slate-200 font-semibold">${s.needleMm}mm (${usInfo.us})</span>
+                </div>
+                <div class="bg-slate-950 rounded-lg p-2 border border-slate-800/80">
+                  <span class="text-slate-500 block">Gauge / ${dimLabel}</span>
+                  <span class="text-slate-200 font-semibold">${s.stsPer10cm} sts × ${s.rowsPer10cm} rows</span>
+                </div>
+              </div>
+            </div>
+            <div class="flex items-center justify-between pt-2 border-t border-slate-800/80 text-xs">
+              <span class="text-slate-500">${Math.round(s.metersPerGram * 100)}m / 100g</span>
+              <button onclick="deleteSwatch('${s.id}')" class="text-rose-400 hover:text-rose-300 font-medium">Delete</button>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function addSwatch(e) {
+      e.preventDefault();
+      const name = document.getElementById('sw-name').value.trim();
+      const length = parseFloat(document.getElementById('sw-length').value);
+      const weight = parseFloat(document.getElementById('sw-weight').value);
+      const needleMm = parseFloat(document.getElementById('sw-needle').value);
+      const sts = parseFloat(document.getElementById('sw-sts').value);
+      const rows = parseFloat(document.getElementById('sw-rows').value);
+
+      if (!name || isNaN(length) || isNaN(weight) || isNaN(needleMm) || isNaN(sts) || isNaN(rows)) return;
+
+      const metersPerGram = toMetersPerGram(length, weight);
+      swatches.unshift({
+        id: 'sw-' + Date.now(),
+        name,
+        metersPerGram,
+        needleMm,
+        stsPer10cm: sts,
+        rowsPer10cm: rows
+      });
+
+      saveSwatches();
+      renderAll();
+      e.target.reset();
+      document.getElementById('sw-needle').value = '4.0';
+    }
+
+    function deleteSwatch(id) {
+      swatches = swatches.filter(s => s.id !== id);
+      saveSwatches();
+      renderAll();
+    }
+
+    // Solve for unknown target needle size given known swatch, target yarn grist, and target stitch gauge
+    function calculateTargetNeedle() {
+      const refId = document.getElementById('fn-ref-swatch').value;
+      const ref = swatches.find(s => s.id === refId) || swatches[0];
+      if (!ref) return;
+
+      const dimLabel = currentUnit === 'metric' ? '10cm' : '4"';
+      document.getElementById('fn-ref-summary').innerHTML = `
+        <div><span class="text-slate-500 block">Weight Class</span><span class="text-slate-200 font-medium">${classifyYarnWeight(ref.metersPerGram)}</span></div>
+        <div><span class="text-slate-500 block">Ref Needle</span><span class="text-slate-200 font-medium">${ref.needleMm} mm</span></div>
+        <div><span class="text-slate-500 block">Ref Gauge</span><span class="text-slate-200 font-medium">${ref.stsPer10cm} sts / ${dimLabel}</span></div>
+      `;
+
+      const targetLength = parseFloat(document.getElementById('fn-target-length').value) || 200;
+      const targetWeight = parseFloat(document.getElementById('fn-target-weight').value) || 50;
+      const targetSts = parseFloat(document.getElementById('fn-target-sts').value) || 22;
+
+      const targetMetersPerGram = toMetersPerGram(targetLength, targetWeight);
+      const eKnown = getEffectiveDimension(ref.needleMm, ref.metersPerGram);
+
+      // Inverse proportional model:
+      // G_target = G_known * (E_known / E_target)  =>  E_target = E_known * (G_known / G_target)
+      const eTarget = eKnown * (ref.stsPer10cm / targetSts);
+      const targetYarnComponent = YARN_WEIGHT_FACTOR * (1 / Math.sqrt(targetMetersPerGram));
+      let solvedNeedleMm = eTarget - targetYarnComponent;
+
+      // Clamp to realistic knitting needle bounds
+      solvedNeedleMm = Math.max(1.5, Math.min(15.0, solvedNeedleMm));
+
+      const nearest = getNearestUsNeedle(solvedNeedleMm);
+      const projectedRows = ref.rowsPer10cm * (eKnown / eTarget);
+
+      document.getElementById('fn-result-mm').textContent = `${solvedNeedleMm.toFixed(2)} mm`;
+      document.getElementById('fn-result-us').textContent = nearest.us;
+      document.getElementById('fn-result-nearest').textContent = `Nearest standard needle: ${nearest.mm.toFixed(2)} mm (${nearest.us})`;
+      document.getElementById('fn-result-category').textContent = classifyYarnWeight(targetMetersPerGram);
+      document.getElementById('fn-result-grist').textContent = formatGrist(targetMetersPerGram);
+      document.getElementById('fn-result-proj-rows').textContent = `${projectedRows.toFixed(1)} rows / ${dimLabel}`;
+
+      drawGaugeComparisonCanvas('fn-canvas', ref.stsPer10cm, ref.rowsPer10cm, targetSts, projectedRows);
+    }
+
+    // Predict stitch & row gauge given known swatch, new yarn grist, and target needle size
+    function calculatePredictedGauge() {
+      const refId = document.getElementById('pg-ref-swatch').value;
+      const ref = swatches.find(s => s.id === refId) || swatches[0];
+      if (!ref) return;
+
+      const targetLength = parseFloat(document.getElementById('pg-target-length').value) || 200;
+      const targetWeight = parseFloat(document.getElementById('pg-target-weight').value) || 50;
+      let targetNeedle = parseFloat(document.getElementById('pg-target-needle').value);
+      if (isNaN(targetNeedle)) targetNeedle = 4.0;
+      targetNeedle = Math.max(1.5, Math.min(15.0, targetNeedle));
+
+      const nearestUs = getNearestUsNeedle(targetNeedle);
+      document.getElementById('pg-needle-us-label').textContent = `≈ ${nearestUs.us}`;
+
+      const targetMetersPerGram = toMetersPerGram(targetLength, targetWeight);
+      const eKnown = getEffectiveDimension(ref.needleMm, ref.metersPerGram);
+      const eTarget = getEffectiveDimension(targetNeedle, targetMetersPerGram);
+
+      // Stitch gauge scales with overall effective loop dimension; row gauge has slightly higher sensitivity to yarn thickness
+      const ratio = eKnown / eTarget;
+      const predSts = ref.stsPer10cm * ratio;
+      const yarnRatio = Math.sqrt(targetMetersPerGram / ref.metersPerGram);
+      const predRows = ref.rowsPer10cm * (ratio * 0.75 + yarnRatio * 0.25);
+
+      const shiftPct = ((predSts - ref.stsPer10cm) / ref.stsPer10cm) * 100;
+      const shiftSign = shiftPct >= 0 ? '+' : '';
+
+      document.getElementById('pg-result-sts').textContent = predSts.toFixed(1);
+      document.getElementById('pg-result-rows').textContent = predRows.toFixed(1);
+      document.getElementById('pg-result-category').textContent = classifyYarnWeight(targetMetersPerGram);
+      document.getElementById('pg-result-shift').textContent = `${shiftSign}${shiftPct.toFixed(1)}% vs reference`;
+
+      drawGaugeComparisonCanvas('pg-canvas', ref.stsPer10cm, ref.rowsPer10cm, predSts, predRows);
+    }
+
+    function drawGaugeComparisonCanvas(canvasId, refSts, refRows, targetSts, targetRows) {
+      const canvas = document.getElementById(canvasId);
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      const w = canvas.width;
+      const h = canvas.height;
+
+      ctx.clearRect(0, 0, w, h);
+
+      const drawGrid = (offsetX, sts, rows, color, label) => {
+        const boxSize = 96;
+        const startX = offsetX + (w / 2 - boxSize) / 2;
+        const startY = 18;
+
+        ctx.strokeStyle = '#334155';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(startX, startY, boxSize, boxSize);
+
+        const cols = Math.min(35, Math.max(6, Math.round(sts / 2)));
+        const rws = Math.min(45, Math.max(8, Math.round(rows / 2)));
+        const cellW = boxSize / cols;
+        const cellH = boxSize / rws;
+
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1.1;
+        for (let r = 0; r < rws; r++) {
+          for (let c = 0; c < cols; c++) {
+            const cx = startX + c * cellW + cellW / 2;
+            const cy = startY + r * cellH + cellH / 2;
+            ctx.beginPath();
+            ctx.moveTo(cx - cellW * 0.28, cy - cellH * 0.25);
+            ctx.lineTo(cx, cy + cellH * 0.25);
+            ctx.lineTo(cx + cellW * 0.28, cy - cellH * 0.25);
+            ctx.stroke();
+          }
+        }
+
+        ctx.fillStyle = '#94a3b8';
+        ctx.font = '11px Inter, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(label, offsetX + w / 4, startY + boxSize + 18);
+      };
+
+      drawGrid(0, refSts, refRows, '#64748b', `Ref: ${refSts.toFixed(1)} × ${refRows.toFixed(1)}`);
+      drawGrid(w / 2, targetSts, targetRows, '#818cf8', `Target: ${targetSts.toFixed(1)} × ${targetRows.toFixed(1)}`);
+    }
+
+    function renderAll() {
+      document.getElementById('swatch-count').textContent = swatches.length;
+      populateSwatchSelects();
+      renderSwatchLibrary();
+      calculateTargetNeedle();
+      calculatePredictedGauge();
+    }
+
+    // Initialize
+    loadSwatches();
+    renderAll();
+  </script>
+</body>
+</html>
